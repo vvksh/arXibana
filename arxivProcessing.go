@@ -49,6 +49,9 @@ const (
 				}
 		}
 	}`
+	MAX_SEED_RECORDS     int    = 100
+	MAX_RESULTS_PER_CALL int    = 10
+	ELASTICSEARCH_URL    string = "http://elasticsearch:9200"
 )
 
 type ArxivItem struct {
@@ -61,38 +64,27 @@ type ArxivItem struct {
 
 func main() {
 	log.Println("started arxivprocessing")
-	url := "http://export.arxiv.org/api/query?search_query=cat:cs.DB&start=0&max_results=10"
+	// initialize feedparser, elastisearch client and create index if not present
 	cfg := elasticsearch.Config{
 		Addresses: []string{
-			"http://elasticsearch:9200",
+			ELASTICSEARCH_URL,
 		},
 		// ...
 	}
-
 	es, err := elasticsearch.NewClient(cfg)
 	if err != nil {
 		log.Fatalf("Error while initiazing elastic client: %s", err)
 	}
-
-	fp := gofeed.NewParser()
-	feed, _ := fp.ParseURL(url)
-	// fmt.Println(feed.String())
-
 	createIndexIfNotPresent(es)
+	fp := gofeed.NewParser()
 
-	for _, item := range feed.Items {
-		newArxivItem := ArxivItem{
-			item.Title,
-			item.Description,
-			item.Link,
-			item.Author.Name,
-			item.Categories}
-		jsonItem, _ := json.Marshal(&newArxivItem)
+	url := getURL(0, MAX_RESULTS_PER_CALL)
 
-		// fmt.Println(string(jsonItem))
-		publishToElastic(string(jsonItem), es)
+	fetchURLAndPublishToElastic(url, fp, es)
+}
 
-	}
+func getURL(start int, max int) string {
+	return fmt.Sprintf("http://export.arxiv.org/api/query?search_query=cat:cs.DB&start=%d&max_results=%d", start, max)
 }
 
 func createIndexIfNotPresent(ElasticClient *elasticsearch.Client) {
@@ -135,6 +127,28 @@ func createIndexIfNotPresent(ElasticClient *elasticsearch.Client) {
 		log.Panicln(err)
 	}
 	log.Println("Mapping successful", res)
+}
+
+func fetchURLAndPublishToElastic(url string, feedParser *gofeed.Parser, elasticClient *elasticsearch.Client) {
+	feed, err := feedParser.ParseURL(url)
+	if err != nil {
+		log.Panicln("error while fetching arxiv url", err, url)
+	}
+
+	for _, item := range feed.Items {
+		newArxivItem := ArxivItem{
+			item.Title,
+			item.Description,
+			item.Link,
+			item.Author.Name,
+			item.Categories}
+		jsonItem, _ := json.Marshal(&newArxivItem)
+
+		// fmt.Println(string(jsonItem))
+		publishToElastic(string(jsonItem), elasticClient)
+
+	}
+
 }
 
 func publishToElastic(Jsonitem string, ElasticClient *elasticsearch.Client) {
