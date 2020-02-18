@@ -1,34 +1,22 @@
 package main
 
 import (
-	// "context"
-
-	// "encoding/json"
-	// "io/ioutil"
-	// "log"
-	// "net/http"
-	// "strconv"
-	// "strings"
-	// "github.com/elastic/go-elasticsearch"
-	// "github.com/elastic/go-elasticsearch/esapi"
-
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/elastic/go-elasticsearch/esapi"
-	"github.com/mmcdole/gofeed"
-
-	// "github.com/mmcdole/gofeed/rss"
 	"github.com/elastic/go-elasticsearch/v6"
-	"github.com/google/uuid"
+	"github.com/mmcdole/gofeed"
 )
 
 const (
-	indexName string = "test8"
-	mapping   string = `{
+	defaultIndexName string = "test10"
+	mapping          string = `{
 		"properties" : {
 				"title": {
 					"type": "text",
@@ -49,11 +37,13 @@ const (
 				}
 		}
 	}`
-	MAX_SEED_RECORDS     int    = 100
+
+	MAX_SEED_RECORDS int        = 500
 	MAX_RESULTS_PER_CALL int    = 10
 	ELASTICSEARCH_URL    string = "http://elasticsearch:9200"
 )
 
+//ArxivItem  will get posted to elasticsearch
 type ArxivItem struct {
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
@@ -64,6 +54,7 @@ type ArxivItem struct {
 
 func main() {
 	log.Println("started arxivprocessing")
+
 	// initialize feedparser, elastisearch client and create index if not present
 	cfg := elasticsearch.Config{
 		Addresses: []string{
@@ -75,19 +66,39 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error while initiazing elastic client: %s", err)
 	}
-	createIndexIfNotPresent(es)
+
+	//If seed, pre-fetch articles and add to elasticsearch index, else only fetch recent
+	seedPtr := flag.Bool("seed", false, "a bool")
+	searchQueryPtr := flag.String("search_query", "cat:cs.DB+OR+cat:cs.DC", "search query for arxiv")
+	indexNamePtr := flag.String("index_name", defaultIndexName, "indexName")
+	flag.Parse()
+
+	createIndexIfNotPresent(es, *indexNamePtr)
 	fp := gofeed.NewParser()
-
-	url := getURL(0, MAX_RESULTS_PER_CALL)
-
-	fetchURLAndPublishToElastic(url, fp, es)
+	if *seedPtr {
+		seed(fp, es, *searchQueryPtr, *indexNamePtr)
+		return
+	} else {
+		fetchURLAndPublishToElastic(*indexNamePtr, getURL(0, MAX_RESULTS_PER_CALL, *searchQueryPtr), fp, es)
+	}
 }
 
-func getURL(start int, max int) string {
-	return fmt.Sprintf("http://export.arxiv.org/api/query?search_query=cat:cs.DB&start=%d&max_results=%d", start, max)
+func seed(feedParser *gofeed.Parser, elasticClient *elasticsearch.Client, searchQuery string, indexName string) {
+	i := 0
+	for i < MAX_SEED_RECORDS {
+		url := getURL(i, MAX_RESULTS_PER_CALL, searchQuery)
+		fetchURLAndPublishToElastic(indexName, url, feedParser, elasticClient)
+		time.Sleep(1 * time.Second)
+		i = i + MAX_RESULTS_PER_CALL
+	}
+
 }
 
-func createIndexIfNotPresent(ElasticClient *elasticsearch.Client) {
+func getURL(start int, max int, searchQuery string) string {
+	return fmt.Sprintf("http://export.arxiv.org/api/query?search_query=%s&start=%d&max_results=%d", searchQuery, start, max)
+}
+
+func createIndexIfNotPresent(ElasticClient *elasticsearch.Client, indexName string) {
 	log.Println("creating index")
 
 	existsRequest := esapi.IndicesExistsRequest{
@@ -129,7 +140,7 @@ func createIndexIfNotPresent(ElasticClient *elasticsearch.Client) {
 	log.Println("Mapping successful", res)
 }
 
-func fetchURLAndPublishToElastic(url string, feedParser *gofeed.Parser, elasticClient *elasticsearch.Client) {
+func fetchURLAndPublishToElastic(indexName string, url string, feedParser *gofeed.Parser, elasticClient *elasticsearch.Client) {
 	feed, err := feedParser.ParseURL(url)
 	if err != nil {
 		log.Panicln("error while fetching arxiv url", err, url)
@@ -145,19 +156,26 @@ func fetchURLAndPublishToElastic(url string, feedParser *gofeed.Parser, elasticC
 		jsonItem, _ := json.Marshal(&newArxivItem)
 
 		// fmt.Println(string(jsonItem))
-		publishToElastic(string(jsonItem), elasticClient)
+
+		docID := getDocID(item.Link)
+		publishToElastic(indexName, docID, string(jsonItem), elasticClient)
 
 	}
+}
+
+func getDocID(itemLink string) string {
+	linkSplit := strings.Split(itemLink, "/")
+	return linkSplit[len(linkSplit)-1]
 
 }
 
-func publishToElastic(Jsonitem string, ElasticClient *elasticsearch.Client) {
-	log.Println("Publishing" + Jsonitem)
+func publishToElastic(indexName string, UUID string, Jsonitem string, ElasticClient *elasticsearch.Client) {
 	req := esapi.IndexRequest{
 		Index:      indexName,
-		DocumentID: uuid.New().String(),
+		DocumentID: UUID,
 		Body:       strings.NewReader(Jsonitem),
 		Refresh:    "true",
+		OpType:     "create", //only add if absent
 	}
 
 	// // Perform the request with the client.
@@ -168,7 +186,7 @@ func publishToElastic(Jsonitem string, ElasticClient *elasticsearch.Client) {
 	defer res.Body.Close()
 
 	if res.IsError() {
-		log.Printf("[%s] Error indexing document ID=%d", res.Status(), 1)
+		log.Printf("[%s] Error indexing document ID=%s", res.Status(), UUID)
 	} else {
 		// 	// Deserialize the response into a map.
 		var r map[string]interface{}
