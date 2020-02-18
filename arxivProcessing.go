@@ -64,7 +64,7 @@ func main() {
 	url := "http://export.arxiv.org/api/query?search_query=cat:cs.DB&start=0&max_results=10"
 	cfg := elasticsearch.Config{
 		Addresses: []string{
-			"http://localhost:9200",
+			"http://elasticsearch:9200",
 		},
 		// ...
 	}
