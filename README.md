@@ -9,11 +9,11 @@ This project is inspired by [arxivSanity preserver project](https://github.com/k
 
 The go script `arxivProcessing.go` downloads arxiv paper data every 24 hours and stores it in an elasticsearch index, which is used for the Kibana dashboard.
 
-By default, the go script is configured to download 10 latest papers for the categories: Databases(cs.DB) and Distributed computing (cs.DS). At the start, it downloads 500 recent ones and then setiches to 24 hours cadence. 
+By default, the go script is configured to download 10 latest papers for the categories: Databases(cs.DB) and Distributed computing (cs.DS). At the start, it downloads 500 recent ones and then switches to 24 hours cadence.
 It won't add paper if that paper is already added.
 
 Here's my dashboard
-![pic](https://www.dropbox.com/s/sllc90lri196cg2/kibanaUI.png?dl=1)
+![pic](kibana-preview.png)
 
 ## How to use it
 - For macOS
