@@ -21,3 +21,5 @@ services:
         build: .
         depends_on: 
             - elasticsearch
+        environment:
+            - "ELASTICSEARCH_URL=http://elasticsearch:9200"
