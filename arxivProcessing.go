@@ -34,13 +34,18 @@ const (
 				},
 				"categories" : {
 					"type": "text"
+				},
+				"published" : {
+					"type": "keyword"
+				}
+				"updated" : {
+					"type": "keyword"
 				}
 		}
 	}`
 
 	MAX_SEED_RECORDS int        = 500
 	MAX_RESULTS_PER_CALL int    = 10
-	ELASTICSEARCH_URL    string = "http://elasticsearch:9200"
 )
 
 //ArxivItem  will get posted to elasticsearch
@@ -50,6 +55,8 @@ type ArxivItem struct {
 	Link        string   `json:"link"`
 	Author      string   `json:"author"`
 	Categories  []string `json:"categories"`
+	Published     string   `json:"published"`
+	Updated     string   `json:"updated"`
 }
 
 func main() {
@@ -57,9 +64,8 @@ func main() {
 
 	// initialize feedparser, elastisearch client and create index if not present
 	cfg := elasticsearch.Config{
-		Addresses: []string{
-			ELASTICSEARCH_URL,
-		},
+		RetryBackoff: simpleRetry,
+		MaxRetries: 5,
 		// ...
 	}
 	es, err := elasticsearch.NewClient(cfg)
@@ -152,11 +158,11 @@ func fetchURLAndPublishToElastic(indexName string, url string, feedParser *gofee
 			item.Description,
 			item.Link,
 			item.Author.Name,
-			item.Categories}
+			item.Categories,
+			item.Published,
+			item.Updated,
+		}
 		jsonItem, _ := json.Marshal(&newArxivItem)
-
-		// fmt.Println(string(jsonItem))
-
 		docID := getDocID(item.Link)
 		publishToElastic(indexName, docID, string(jsonItem), elasticClient)
 
@@ -197,4 +203,8 @@ func publishToElastic(indexName string, UUID string, Jsonitem string, ElasticCli
 			log.Printf("[%s] %s; version=%d", res.Status(), r["result"], int(r["_version"].(float64)))
 		}
 	}
+}
+
+func simpleRetry(attempt int) time.Duration {
+	return 60*time.Second;
 }
