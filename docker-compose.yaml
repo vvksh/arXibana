@@ -2,11 +2,11 @@ version: '3'
 
 services:
     elasticsearch:
-        image: docker.elastic.co/elasticsearch/elasticsearch:6.3.2
+        image: lxndryng/elasticsearch-arm:v6.3.2
         environment:
           - cluster.name=arxivProcessing
-          - bootstrap.memory_lock=true
-          - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+          #- bootstrap.memory_lock=true
+          - "ES_JAVA_OPTS=-Xms256m -Xmx256m -Djna.tmpdir=/var/lib/elasticsearch"
         ulimits:
             memlock:
                 soft: -1
@@ -14,9 +14,13 @@ services:
         ports:
             - "9200:9200"
     kibana:
-        image: docker.elastic.co/kibana/kibana:6.3.2
+        image: lxndryng/kibana-arm:6.3.2
         ports:
             - "5601:5601"
+        environment:
+            ELASTICSEARCH_URL: http://elasticsearch:9200
+        depends_on:
+            - elasticsearch
     arxivprocessing:
         build: .
         depends_on: 
