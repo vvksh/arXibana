@@ -15,10 +15,7 @@ It won't add paper if that paper is already added.
 ## How to use it
 - Clone the repo
 ### For macOS
-	```
-	```
-### For raspberry-pi
-    ```
-    ```
-- Run `docker-compose up -d` (Modify Dockerfile if you want to change the categories)
+        git pull https://github.com/vksah32/arXibana.git
+
+- `cd arXibana && docker-compose up -d` (Modify Dockerfile if you want to change the categories)
 
