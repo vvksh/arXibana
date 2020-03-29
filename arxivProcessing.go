@@ -36,16 +36,18 @@ const (
 					"type": "text"
 				},
 				"published" : {
-					"type": "keyword"
-				}
+					"type": "date"
+				},
 				"updated" : {
-					"type": "keyword"
+					"type": "date"
 				}
 		}
 	}`
 
-	MAX_SEED_RECORDS int        = 500
+	MAX_SEED_RECORDS int        = 10000
+	MAX_RESULTS_PER_SEED_CALL int = 2000
 	MAX_RESULTS_PER_CALL int    = 10
+	ELASTICSEARCH_URL string    = "http://elasticsearch:9200"
 )
 
 //ArxivItem  will get posted to elasticsearch
@@ -64,6 +66,9 @@ func main() {
 
 	// initialize feedparser, elastisearch client and create index if not present
 	cfg := elasticsearch.Config{
+	    Addresses: []string{
+			ELASTICSEARCH_URL,
+		},		
 		RetryBackoff: simpleRetry,
 		MaxRetries: 5,
 		// ...
@@ -92,16 +97,16 @@ func main() {
 func seed(feedParser *gofeed.Parser, elasticClient *elasticsearch.Client, searchQuery string, indexName string) {
 	i := 0
 	for i < MAX_SEED_RECORDS {
-		url := getURL(i, MAX_RESULTS_PER_CALL, searchQuery)
+		url := getURL(i, MAX_RESULTS_PER_SEED_CALL, searchQuery)
 		fetchURLAndPublishToElastic(indexName, url, feedParser, elasticClient)
 		time.Sleep(1 * time.Second)
-		i = i + MAX_RESULTS_PER_CALL
+		i = i + MAX_RESULTS_PER_SEED_CALL
 	}
 
 }
 
 func getURL(start int, max int, searchQuery string) string {
-	return fmt.Sprintf("http://export.arxiv.org/api/query?search_query=%s&start=%d&max_results=%d", searchQuery, start, max)
+	return fmt.Sprintf("http://export.arxiv.org/api/query?search_query=%s&start=%d&max_results=%d&sortBy=lastUpdatedDate&sortOrder=descending", searchQuery, start, max)
 }
 
 func createIndexIfNotPresent(ElasticClient *elasticsearch.Client, indexName string) {
